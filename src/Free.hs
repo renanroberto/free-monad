@@ -43,6 +43,9 @@ data File a where
 instance Functor File where
   fmap f (Read path next) = Read path (f . next)
 
+runFile :: File a -> IO a
+runFile (Read path next) = next <$> readFile path
+
 
 data Console a where
   Input  :: (String -> a) -> Console a
@@ -52,12 +55,18 @@ instance Functor Console where
   fmap f (Input next) = Input (f . next)
   fmap f (Output str next) = Output str (f . next)
 
+runConsole :: Console a -> IO a
+runConsole (Input next) = next <$> getLine
+runConsole (Output str next) = next <$> putStrLn str
+
 
 data Random a where
   Random :: R.Random r => (r, r) -> (r -> a) -> Random a
 
 instance Functor Random where
   fmap f (Random range next) = Random range (f . next)
+
+runRandom (Random range next) = next <$> randomRIO range
 
 
 data Eff a where
@@ -83,11 +92,11 @@ random range = liftFree $ RandomEff (Random range id)
 
 
 runEff :: Eff a -> IO a
-runEff (FileEff (Read path next))      = next <$> readFile path
-runEff (ConsoleEff (Input next))       = next <$> getLine
-runEff (ConsoleEff (Output str next))  = next <$> putStrLn str
-runEff (RandomEff (Random range next)) = next <$> randomRIO range
+runEff (FileEff eff) = runFile eff
+runEff (ConsoleEff eff) = runConsole eff
+runEff (RandomEff eff) = runRandom eff
 
+-- refactor
 runPure :: Eff a -> Identity a
 runPure (FileEff (Read _ next))         = pure $ next "question?"
 runPure (ConsoleEff (Input next))       = pure $ next "answer"
