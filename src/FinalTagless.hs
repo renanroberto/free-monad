@@ -5,37 +5,43 @@ import Data.Functor.Identity
 import System.Random (Random, randomRIO)
 
 
-class Monad m => HasConsole m where
+class Monad m => MonadConsole m where
   input :: m String
   output :: String -> m ()
 
-instance HasConsole IO where
+instance MonadConsole IO where
   input = getLine
   output = putStrLn
 
-instance HasConsole Identity where
+instance MonadConsole Identity where
   input = pure "console"
   output _ = pure ()
 
 
-class Monad m => HasFile m where
+class Monad m => MonadFile m where
   read :: FilePath -> m String
 
-instance HasFile IO where
+instance MonadFile IO where
   read = readFile
 
-instance HasFile Identity where
+instance MonadFile Identity where
   read _ = pure "content from file"
 
 
-class Monad m => HasRandom m where
+class Monad m => MonadRandom m where
   random :: Random a => (a, a) -> m a
 
-instance HasRandom IO where
+instance MonadRandom IO where
   random = randomRIO
 
-instance HasRandom Identity where
+instance MonadRandom Identity where
   random = pure . fst
+
+
+class (MonadRandom m, MonadConsole m, MonadFile m) => App m
+
+instance App IO
+instance App Identity
 
 
 quote :: Char -> String -> String
@@ -46,7 +52,7 @@ quoteAnswer False answer = quote '"' answer <> " was a horrible answer"
 quoteAnswer True  answer = quote '"' answer <> " was a wonderful answer" 
 
 
-makeQuestion :: (HasConsole m, HasFile m) => m String
+makeQuestion :: (MonadConsole m, MonadFile m) => m String
 makeQuestion = do
   question <- read "question.txt"
   output question
@@ -56,7 +62,7 @@ makeQuestion = do
     else output "incorrect"
   pure answer
 
-program :: (HasRandom m, HasConsole m, HasFile m) => m ()
+program :: App m => m ()
 program = do
   answer <- makeQuestion
   nice <- random (False, True)

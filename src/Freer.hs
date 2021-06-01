@@ -22,9 +22,9 @@ console :: Console a -> IO a
 console Input = getLine
 console (Output str) = putStrLn str
 
-pureConsole :: Console a -> Identity a
-pureConsole Input = pure "user input"
-pureConsole (Output str) = pure ()
+pureConsole :: Console a -> a
+pureConsole Input = "user input"
+pureConsole (Output str) = ()
 
 
 data FileSystem a where
@@ -33,17 +33,16 @@ data FileSystem a where
 
 makeEffect ''FileSystem
 
-fileSystem :: FileSystem a -> IO a
-fileSystem (Read path) = readFile path
-fileSystem (Write path content) = writeFile path content
+filesystem :: FileSystem a -> IO a
+filesystem (Read path) = readFile path
+filesystem (Write path content) = writeFile path content
 
-pureFileSystem :: FileSystem a -> Identity a
-pureFileSystem (Read path) = pure path
-pureFileSystem (Write path content) = pure ()
-
+pureFilesystem :: FileSystem a -> a
+pureFilesystem (Read _)    = "mocked file"
+pureFilesystem (Write _ _) = ()
 
 initialState :: IO (IORef String)
-initialState = newIORef "random question?"
+initialState = newIORef "question in memory?"
 
 memoryRef :: IORef String -> FileSystem a -> IO a
 memoryRef ref (Read _)  = readIORef ref
@@ -63,8 +62,8 @@ makeEffect ''Randomness
 randomness :: Randomness a -> IO a
 randomness (Random range) = randomRIO range
 
-pureRandomness :: Randomness a -> Identity a
-pureRandomness (Random (min, _)) = pure min
+pureRandomness :: Randomness a -> a
+pureRandomness (Random (min, _)) = min
 
 
 quote :: Char -> String -> String
@@ -85,7 +84,14 @@ makeQuestion = do
     else output "Incorrect"
   pure answer
 
-program :: Members '[Randomness, Console, FileSystem] effs => Eff effs ()
+
+type Effects =
+  '[ Randomness
+   , Console
+   , FileSystem
+   ]
+
+program :: Members Effects effs => Eff effs ()
 program = do
   answer <- makeQuestion
   nice <- random (False, True)
@@ -94,15 +100,14 @@ program = do
 
 runProgram :: IO ()
 runProgram = program
-  & interpretM randomness
-  & interpretM memory
+  & interpretM (pure . pureRandomness)
+  & interpretM filesystem
   & interpretM console
   & runM
 
 pureProgram :: ()
 pureProgram = program
-  & interpretM pureRandomness
-  & interpretM pureFileSystem
-  & interpretM pureConsole
-  & runM
-  & runIdentity
+  & interpret (pure . pureRandomness)
+  & interpret (pure . pureFilesystem)
+  & interpret (pure . pureConsole)
+  & run

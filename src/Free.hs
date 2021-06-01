@@ -5,6 +5,7 @@ module Free where
 import Prelude hiding (read)
 import Data.Function ((&))
 import Data.Functor.Identity
+import Data.IORef
 import Control.Monad (ap, liftM)
 import System.Random (randomRIO)
 import qualified System.Random as R (Random)
@@ -30,21 +31,9 @@ runFree f (Impure x) = f x >>= runFree f
 liftFree :: Functor f => f a -> Free f a
 liftFree x = Impure (fmap pure x)
 
-{-- what this should do?
 foldFree :: Functor f => (f a -> a) -> (Free f a -> a)
 foldFree _ (Pure x) = x
 foldFree f (Impure x) = f (fmap (foldFree f) x)
---}
-
-
-data File a where
-  Read :: FilePath -> (String -> a) -> File a
-
-instance Functor File where
-  fmap f (Read path next) = Read path (f . next)
-
-runFile :: File a -> IO a
-runFile (Read path next) = next <$> readFile path
 
 
 data Console a where
@@ -59,6 +48,36 @@ runConsole :: Console a -> IO a
 runConsole (Input next) = next <$> getLine
 runConsole (Output str next) = next <$> putStrLn str
 
+pureConsole :: Console a -> a
+pureConsole (Input next) = next "mocked input"
+pureConsole (Output _ next) = next ()
+
+
+data FileSystem a where
+  Read :: FilePath -> (String -> a) -> FileSystem a
+
+instance Functor FileSystem where
+  fmap f (Read path next) = Read path (f . next)
+
+runFileSystem :: FileSystem a -> IO a
+runFileSystem (Read path next) = next <$> readFile path
+
+pureFileSystem :: FileSystem a -> a
+pureFileSystem (Read _ next) = next "mocked file"
+
+initialState :: IO (IORef String)
+initialState = newIORef "random question?"
+
+memoryRef :: IORef String -> FileSystem a -> IO a
+memoryRef ref (Read _ next) = next <$> readIORef ref
+-- memoryRef ref (Write _ content) = writeIORef ref content
+
+runMemory :: FileSystem a -> IO a
+runMemory action = do
+  ref <- initialState
+  memoryRef ref action
+
+
 
 data Random a where
   Random :: R.Random r => (r, r) -> (r -> a) -> Random a
@@ -68,18 +87,17 @@ instance Functor Random where
 
 runRandom (Random range next) = next <$> randomRIO range
 
+pureRandom (Random (min, _) next) = next min
+
 
 data Eff a where
-  FileEff    :: File a    -> Eff a
   ConsoleEff :: Console a -> Eff a
+  FileSystemEff    :: FileSystem a    -> Eff a
   RandomEff  :: Random a  -> Eff a
   deriving Functor
 
 type App a = Free Eff a
 
-
-read :: FilePath -> App String
-read path = liftFree $ FileEff (Read path id)
 
 input :: App String
 input = liftFree $ ConsoleEff (Input id)
@@ -87,28 +105,33 @@ input = liftFree $ ConsoleEff (Input id)
 output :: String -> App ()
 output str = liftFree $ ConsoleEff (Output str id)
 
+read :: FilePath -> App String
+read path = liftFree $ FileSystemEff (Read path id)
+
 random :: R.Random r => (r, r) -> App r
 random range = liftFree $ RandomEff (Random range id)
 
 
 runEff :: Eff a -> IO a
-runEff (FileEff eff) = runFile eff
-runEff (ConsoleEff eff) = runConsole eff
-runEff (RandomEff eff) = runRandom eff
+runEff (ConsoleEff eff)    = runConsole eff
+runEff (FileSystemEff eff) = runFileSystem eff
+runEff (RandomEff eff)     = runRandom eff
 
--- refactor
-runPure :: Eff a -> Identity a
-runPure (FileEff (Read _ next))         = pure $ next "question?"
-runPure (ConsoleEff (Input next))       = pure $ next "answer"
-runPure (ConsoleEff (Output _ next))    = pure $ next ()
-runPure (RandomEff (Random range next)) = pure . next . fst $ range
+runEffWithMemory :: Eff a -> IO a
+runEffWithMemory (FileSystemEff eff) = runMemory eff
+runEffWithMemory eff = runEff eff
+
+runPure :: Eff a -> a
+runPure (ConsoleEff eff)    = pureConsole eff
+runPure (FileSystemEff eff) = pureFileSystem eff
+runPure (RandomEff eff)     = pureRandom eff
 
 
 runApp :: App a -> IO a
 runApp = runFree runEff
 
 runTest :: App a -> a
-runTest = runIdentity . runFree runPure
+runTest = foldFree runPure
 
 
 quote :: Char -> String -> String
@@ -136,8 +159,8 @@ program = do
   output $ quoteAnswer nice answer
 
 
-run :: IO ()
-run = runApp program >> pure ()
+runProgram :: IO ()
+runProgram = runApp program
 
-test :: ()
-test = runTest program
+testProgram :: ()
+testProgram = runTest program
