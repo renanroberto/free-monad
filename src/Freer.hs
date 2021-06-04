@@ -73,7 +73,6 @@ quoteAnswer :: Bool -> String -> String
 quoteAnswer False answer = quote '"' answer <> " was a horrible answer" 
 quoteAnswer True  answer = quote '"' answer <> " was a wonderful answer" 
 
-
 makeQuestion :: Members '[Console, FileSystem] effs => Eff effs String
 makeQuestion = do
   question <- read "question.txt"
@@ -100,7 +99,7 @@ program = do
 
 runProgram :: IO ()
 runProgram = program
-  & interpretM (pure . pureRandomness)
+  & interpretM randomness
   & interpretM filesystem
   & interpretM console
   & runM

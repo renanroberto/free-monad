@@ -29,6 +29,7 @@ library
       Free
       Freer
       MonadTransformer
+      Question
   other-modules:
       Paths_free_monad
   hs-source-dirs:

@@ -4,7 +4,6 @@ module Free where
 
 import Prelude hiding (read)
 import Data.Function ((&))
-import Data.Functor.Identity
 import Data.IORef
 import Control.Monad (ap, liftM)
 import System.Random (randomRIO)
@@ -70,13 +69,11 @@ initialState = newIORef "random question?"
 
 memoryRef :: IORef String -> FileSystem a -> IO a
 memoryRef ref (Read _ next) = next <$> readIORef ref
--- memoryRef ref (Write _ content) = writeIORef ref content
 
 runMemory :: FileSystem a -> IO a
 runMemory action = do
   ref <- initialState
   memoryRef ref action
-
 
 
 data Random a where
@@ -91,9 +88,9 @@ pureRandom (Random (min, _) next) = next min
 
 
 data Eff a where
-  ConsoleEff :: Console a -> Eff a
-  FileSystemEff    :: FileSystem a    -> Eff a
-  RandomEff  :: Random a  -> Eff a
+  ConsoleEff    :: Console a    -> Eff a
+  FileSystemEff :: FileSystem a -> Eff a
+  RandomEff     :: Random a     -> Eff a
   deriving Functor
 
 type App a = Free Eff a
@@ -140,7 +137,6 @@ quote c str = [c] <> str <> [c]
 quoteAnswer :: Bool -> String -> String
 quoteAnswer False answer = quote '"' answer <> " was a horrible answer" 
 quoteAnswer True  answer = quote '"' answer <> " was a wonderful answer" 
-
 
 makeQuestion :: App String
 makeQuestion = do
