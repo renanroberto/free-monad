@@ -27,12 +27,12 @@ runFree :: Monad m => (forall x. f x -> m x) -> Free f a -> m a
 runFree _ (Pure x)   = pure x
 runFree f (Impure x) = f x >>= runFree f
 
-liftFree :: Functor f => f a -> Free f a
-liftFree x = Impure (fmap pure x)
-
 foldFree :: Functor f => (f a -> a) -> (Free f a -> a)
 foldFree _ (Pure x) = x
 foldFree f (Impure x) = f (fmap (foldFree f) x)
+
+liftFree :: Functor f => f a -> Free f a
+liftFree x = Impure (fmap pure x)
 
 
 data Eff a where
@@ -81,19 +81,6 @@ pureEff (Output str next)      = next ()
 pureEff (Read path next)       = next "file content"
 pureEff (Write path s next)    = next ()
 pureEff (Random (min, _) next) = next min
-
-
-initialState :: IO (IORef String)
-initialState = newIORef "question from memory?"
-
-runEffInMemory :: Eff a -> IO a
-runEffInMemory (Input next)        = next <$> getLine
-runEffInMemory (Output str next)   = next <$> putStrLn str
--- This is not correct
-runEffInMemory (Read path next)    = next <$> (initialState >>= readIORef)
-runEffInMemory (Write path s next) = next <$> (initialState >>= \ref -> writeIORef ref s)
--- end of wrongness
-runEffInMemory (Random range next) = next <$> randomRIO range
 
 
 runApp :: App a -> IO a

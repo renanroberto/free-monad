@@ -1,4 +1,6 @@
-{-# LANGUAGE GADTs, FlexibleContexts, DataKinds, TemplateHaskell #-}
+{-#
+LANGUAGE TemplateHaskell, GADTs, FlexibleContexts, DataKinds, RankNTypes
+#-}
 
 module Freer where
 
@@ -41,18 +43,6 @@ pureFilesystem :: FileSystem a -> a
 pureFilesystem (Read _)    = "mocked file"
 pureFilesystem (Write _ _) = ()
 
-initialState :: IO (IORef String)
-initialState = newIORef "question in memory?"
-
-memoryRef :: IORef String -> FileSystem a -> IO a
-memoryRef ref (Read _)  = readIORef ref
-memoryRef ref (Write _ content) = writeIORef ref content
-
-memory :: FileSystem a -> IO a
-memory action = do
-  ref <- initialState
-  memoryRef ref action
-
 
 data Randomness a where
   Random :: R.Random r => (r, r) -> Randomness r
@@ -64,6 +54,15 @@ randomness (Random range) = randomRIO range
 
 pureRandomness :: Randomness a -> a
 pureRandomness (Random (min, _)) = min
+
+
+type Effects =
+  '[ Randomness
+   , Console
+   , FileSystem
+   ]
+
+type App a = forall effs. Members Effects effs => Eff effs a
 
 
 quote :: Char -> String -> String
@@ -83,14 +82,7 @@ makeQuestion = do
     else output "Incorrect"
   pure answer
 
-
-type Effects =
-  '[ Randomness
-   , Console
-   , FileSystem
-   ]
-
-program :: Members Effects effs => Eff effs ()
+program :: App ()
 program = do
   answer <- makeQuestion
   nice <- random (False, True)

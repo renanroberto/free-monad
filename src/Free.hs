@@ -5,6 +5,7 @@ module Free where
 import Prelude hiding (read)
 import Data.Function ((&))
 import Data.IORef
+import Data.Functor.Identity
 import Control.Monad (ap, liftM)
 import System.Random (randomRIO)
 import qualified System.Random as R (Random)
@@ -13,7 +14,7 @@ import qualified System.Random as R (Random)
 data Free (f :: * -> *) a = Pure a | Impure (f (Free f a))
 
 instance Functor f => Monad (Free f) where
-  Pure x >>= f   = f x
+  Pure x   >>= f = f x
   Impure x >>= f = Impure (fmap (>>= f) x)
 
 instance Functor f => Applicative (Free f) where
@@ -27,12 +28,11 @@ runFree :: Monad m => (forall x. f x -> m x) -> Free f a -> m a
 runFree _ (Pure x)   = pure x
 runFree f (Impure x) = f x >>= runFree f
 
+foldFree :: (forall x. f x -> x) -> (Free f a -> a)
+foldFree f = runIdentity . runFree (Identity . f)
+
 liftFree :: Functor f => f a -> Free f a
 liftFree x = Impure (fmap pure x)
-
-foldFree :: Functor f => (f a -> a) -> (Free f a -> a)
-foldFree _ (Pure x) = x
-foldFree f (Impure x) = f (fmap (foldFree f) x)
 
 
 data Console a where
@@ -40,11 +40,11 @@ data Console a where
   Output :: String -> (() -> a) -> Console a
 
 instance Functor Console where
-  fmap f (Input next) = Input (f . next)
+  fmap f (Input next)      = Input (f . next)
   fmap f (Output str next) = Output str (f . next)
 
 runConsole :: Console a -> IO a
-runConsole (Input next) = next <$> getLine
+runConsole (Input next)      = next <$> getLine
 runConsole (Output str next) = next <$> putStrLn str
 
 pureConsole :: Console a -> a
@@ -64,17 +64,6 @@ runFileSystem (Read path next) = next <$> readFile path
 pureFileSystem :: FileSystem a -> a
 pureFileSystem (Read _ next) = next "mocked file"
 
-initialState :: IO (IORef String)
-initialState = newIORef "random question?"
-
-memoryRef :: IORef String -> FileSystem a -> IO a
-memoryRef ref (Read _ next) = next <$> readIORef ref
-
-runMemory :: FileSystem a -> IO a
-runMemory action = do
-  ref <- initialState
-  memoryRef ref action
-
 
 data Random a where
   Random :: R.Random r => (r, r) -> (r -> a) -> Random a
@@ -82,8 +71,10 @@ data Random a where
 instance Functor Random where
   fmap f (Random range next) = Random range (f . next)
 
+runRandom :: Random a -> IO a
 runRandom (Random range next) = next <$> randomRIO range
 
+pureRandom :: Random a -> a
 pureRandom (Random (min, _) next) = next min
 
 
@@ -113,10 +104,6 @@ runEff :: Eff a -> IO a
 runEff (ConsoleEff eff)    = runConsole eff
 runEff (FileSystemEff eff) = runFileSystem eff
 runEff (RandomEff eff)     = runRandom eff
-
-runEffWithMemory :: Eff a -> IO a
-runEffWithMemory (FileSystemEff eff) = runMemory eff
-runEffWithMemory eff = runEff eff
 
 runPure :: Eff a -> a
 runPure (ConsoleEff eff)    = pureConsole eff

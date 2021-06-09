@@ -27,6 +27,7 @@ library
   exposed-modules:
       FinalTagless
       Free
+      FreePlain
       Freer
       MonadTransformer
       Question

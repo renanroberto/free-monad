@@ -68,6 +68,7 @@ program = do
   nice <- random (False, True)
   output $ quoteAnswer nice answer
 
+
 run :: IO ()
 run = program
 
